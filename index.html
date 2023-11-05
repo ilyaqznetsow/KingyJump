@@ -65,11 +65,20 @@
     const playButton = document.getElementById('playButton');
     const scoreDisplay = document.getElementById('scoreDisplay');
 
+
+    const MAX_CLOUDS_HORIZONTAL = 6; // You can adjust this number as needed
+const MAX_CLOUDS_VERTICAL = 4; // Adjust this number to change vertical cloud density
+let mouseDown = false;
+
+
     // Set the canvas to fullscreen
     function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initializeClouds(); // Recalculate cloud positions based on new canvas size
+    // You may also want to reinitialize platforms and other elements here
+}
+
     resizeCanvas(); // Call this function to set initial size
     window.addEventListener('resize', resizeCanvas);
 
@@ -88,10 +97,11 @@
         dx: 0,
         jumping: true // Start the game with the player in a jumping state
     };
-    let baseGravity = 0.005; // Decreased base gravity for a lighter effect
+    let baseGravity = 0.001; // Further decrease base gravity for a lighter effect
+const maxGravity = 0.25; // Further decrease max gravity for less pull at the top
+const jumpStrength = 10; // Increase jump strength for higher jumps
 let gravity = baseGravity;
-const maxGravity = 0.2; // Decreased max gravity for less pull at the top
-const jumpStrength = 5;
+
 let platforms = [];
 let rocks = [];
 let platformCount = Math.floor(canvas.height / 100);
@@ -99,8 +109,8 @@ let score = 0;
 let touchX;
 
 let animationFrameId;
-let rockCount = 2;
-    const playerSpeed = 2; 
+let rockCount = 1;
+    const playerSpeed = 4; 
 
 const cloudPatternSize = 100;
 const cloudPattern = document.createElement('canvas');
@@ -134,67 +144,39 @@ function createRocks() {
 }
 
 
-const MAX_CLOUDS_HORIZONTAL = 6;
-const MAX_CLOUDS_VERTICAL = 9;
-const CLOUD_SPACING = 100;
-
-let clouds = [];
-
 function initializeClouds() {
+    // Calculate spacing based on canvas size
+    let horizontalSpacing = canvas.width / MAX_CLOUDS_HORIZONTAL;
+    let verticalSpacing = canvas.height / MAX_CLOUDS_VERTICAL;
+
+    clouds = []; // Reset clouds array
+
     for (let y = 0; y < MAX_CLOUDS_VERTICAL; y++) {
         for (let x = 0; x < MAX_CLOUDS_HORIZONTAL; x++) {
             let cloud = {
-                x: x * CLOUD_SPACING,
-                y: y * CLOUD_SPACING
+                x: x * horizontalSpacing,
+                y: y * verticalSpacing
             };
             clouds.push(cloud);
         }
     }
 }
 
+
 function updateScoreDisplay() {
         scoreDisplay.textContent = 'Score: ' + score;
     }
 
-function updateClouds() {
-        for (let cloud of clouds) {
-            cloud.y += player.dy * 0.8;
-        }
-
-        clouds = clouds.filter(cloud => cloud.y < canvas.height); // Updated to use canvas.height
 
 
-    while (clouds.length < MAX_CLOUDS_HORIZONTAL * MAX_CLOUDS_VERTICAL) {
-        let xPositions = clouds.map(cloud => cloud.x);
-        let missingXPositions = [];
-
-        for (let x = 0; x < MAX_CLOUDS_HORIZONTAL; x++) {
-            if (!xPositions.includes(x * CLOUD_SPACING)) {
-                missingXPositions.push(x * CLOUD_SPACING);
-            }
-        }
-
-        if (missingXPositions.length > 0) {
-            let newCloudX = missingXPositions[Math.floor(Math.random() * missingXPositions.length)];
-            clouds.push({ x: newCloudX, y: -CLOUD_SPACING });
-        }
-    }
-}
-
-
-function drawCloudPattern(x, y) {
-    // This function will draw the repeating cloud pattern at the given x and y position
-    ctx.fillStyle = pattern;
-    ctx.fillRect(x, y, cloudPatternSize, cloudPatternSize);
-}
 
 function drawClouds() {
-    for (let cloud of clouds) {
-        drawCloudPattern(cloud.x, cloud.y);
-    }
+    // Set the pattern as the fill style
+    ctx.fillStyle = pattern;
+    // Fill the entire canvas with the pattern
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-initializeClouds();
 
 function drawRocks() {
     rocks.forEach(function(rock, index) {
@@ -213,28 +195,40 @@ function drawRocks() {
     }
 }
 
-
 function createPlatforms() {
     platforms = []; // Clear existing platforms
     let verticalSpacing = canvas.height / platformCount; // Equal spacing for each platform
 
     // Assume the player can jump a horizontal distance equal to maxJumpDistance
-    let maxJumpDistance = jumpStrength * 2; // This is an example, adjust based on your game's mechanics
+    let maxJumpDistance = jumpStrength * 3; // Adjust this value based on your game's mechanics
+    let minPlatformWidth = emojiSize * 3; // Minimum platform width
+    let maxPlatformWidth = maxJumpDistance / 2; // Maximum platform width
 
     for (let i = 0; i < platformCount; i++) {
-        // Random horizontal position, ensuring it's reachable based on the player's jump distance
-        let minX = (i === 0) ? player.x : platforms[i - 1].x - maxJumpDistance + player.size;
-        let maxX = (i === 0) ? player.x : platforms[i - 1].x + maxJumpDistance - player.size;
+        let platformX;
+        let platformWidth = Math.random() * (maxPlatformWidth - minPlatformWidth) + minPlatformWidth;
 
-        // Clamp values to canvas boundaries
-        minX = Math.max(minX, 0);
-        maxX = Math.min(maxX, canvas.width - emojiSize);
+        if (i === 0) {
+            // Place the first platform under the player
+            platformX = player.x - player.size / 2;
+        } else {
+            // Random horizontal position, ensuring it's reachable based on the player's jump distance
+            let minX = platforms[i - 1].x - maxJumpDistance + platforms[i - 1].width;
+            let maxX = platforms[i - 1].x + maxJumpDistance - platformWidth;
+
+            // Clamp values to canvas boundaries
+            minX = Math.max(minX, 0);
+            maxX = Math.min(maxX, canvas.width - platformWidth);
+
+            // Ensure the new platform is within the player's jump range from the previous one
+            platformX = Math.random() * (maxX - minX) + minX;
+        }
 
         let platform = {
-            x: Math.random() * (maxX - minX) + minX, // Random horizontal position within jump range
+            x: platformX,
             y: canvas.height - (i * verticalSpacing), // Evenly spaced vertical position
-            width: 100, // Width of the platform
-            height: 20 // Height of the platform
+            width: platformWidth, // Dynamic width of the platform
+            height: emojiSize // Height of the platform
         };
         platforms.push(platform);
     }
@@ -249,8 +243,8 @@ function drawPlatforms() {
 }
 
 function update() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 // Draw clouds, platforms, and player
 drawClouds();
 drawPlatforms();
@@ -259,7 +253,7 @@ drawRocks();
 drawEmoji(playerEmoji, player.x, player.y, player.size);
 
 // Update gravity based on the player's height
-gravity = 0.005 + (1 - 0.005) * ((canvas.height - player.y) / canvas.height);
+gravity = 0.001 + (0.4 - 0.001) * ((canvas.height - player.y) / canvas.height);
 
 // Update the player's position
 player.dy += gravity;
@@ -284,15 +278,17 @@ if (player.dy < 0) {
         player.jumping = true;
     }
 
-    // Touch controls for lateral movement
     if (touchX != null) {
-        if (touchX < player.x) {
+        if (touchX < player.x + player.size / 2) {
             player.dx = -playerSpeed;
-        } else {
+        } else if (touchX > player.x + player.size / 2) {
             player.dx = playerSpeed;
+        } else {
+            player.dx = 0; // Stop moving if the touch/mouse is approximately over the player
         }
-        player.x += player.dx;
-    }
+    player.x += player.dx;
+}
+
 
     // Collision detection with the canvas edges
     if (player.x < 0) {
@@ -300,6 +296,7 @@ if (player.dy < 0) {
     } else if (player.x > canvas.width) {
         player.x = 0;
     }
+    
 
     // Collision detection with platforms
     platforms.forEach(function(platform, index) {
@@ -358,21 +355,26 @@ function addNewPlatformAtTop() {
 }
 
 function gameOver() {
-        cancelAnimationFrame(animationFrameId);
-        gameOverScreen.style.display = 'flex'; // Changed to flex to center the content
+    cancelAnimationFrame(animationFrameId); // Stop the game loop
+    animationFrameId = null; // Clear the frame ID to indicate the game has stopped
+    gameOverScreen.style.display = 'flex'; // Show the game over screen
+    rocks = [];
     }
 
     playButton.addEventListener('click', function() {
-        gameOverScreen.style.display = 'none';
-        score = 0;
-        player.x = canvas.width / 2;
-        player.y = canvas.height - 150; // Reset player's y position above the bottom
-        player.dy = 0;
-        player.jumping = true; // Start the game with the player in a jumping state
-        updateScoreDisplay();
-        createPlatforms(); // Recreate platforms when the game restarts
-        update();
-    });
+    gameOverScreen.style.display = 'none'; // Hide the game over screen
+    score = 0; // Reset the score
+    player.x = canvas.width / 2; // Center the player on the canvas
+    player.y = canvas.height - 150; // Position the player above the bottom
+    player.dy = 0; // Reset any vertical movement
+    player.jumping = true; // Set the player to be in a jumping state
+    rocks = []; // Clear any existing rocks
+    createRocks(); // Create initial rocks for the new game
+    createPlatforms(); // Create new platforms for the new game
+    updateScoreDisplay(); // Update the score display to show the reset score
+    animationFrameId = requestAnimationFrame(update); // Restart the game loop
+});
+
 
     canvas.addEventListener('touchstart', function(e) {
         touchX = e.touches[0].clientX;
@@ -391,9 +393,29 @@ function gameOver() {
         resizeCanvas();
         // Consider redrawing or resetting game state here if necessary
     });
+
+    canvas.addEventListener('mousedown', function(e) {
+    if (animationFrameId) { // Only allow input if the game is running
+        mouseDown = true;
+        touchX = e.clientX; // Set the touchX to the horizontal mouse position
+    }
+});
+
+canvas.addEventListener('mousemove', function(e) {
+    if (mouseDown && animationFrameId) { // Only move the player if the mouse is down and the game is running
+        touchX = e.clientX;
+    }
+});
+
+canvas.addEventListener('mouseup', function() {
+    mouseDown = false; // Clear the mouseDown when the mouse is released
+    if (animationFrameId) {
+        touchX = null; // Clear the touchX if the game is running
+    }
+});
     
 
-    createPlatforms(); // Create platforms when the game starts
+    // createPlatforms(); // Create platforms when the game starts
     update();
 
     </script>
