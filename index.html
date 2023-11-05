@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Fullscreen Doodle Jump with Rocks</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+            background: #f0f0f0; /* Added a background color for visibility */
+            touch-action: none;
+        }
+        #gameOverScreen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #gameOverText {
+            font-size: 5em;
+            color: red;
+            text-align: center;
+        }
+        #playButton {
+            padding: 1em 2em;
+            font-size: 2em;
+            background: green;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 2em;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameOverScreen">
+        <div id="gameOverText">GAME OVER</div>
+        <button id="playButton">Play Again</button>
+    </div>
+    <div id="scoreDisplay">Score: 0</div>
+    <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const playButton = document.getElementById('playButton');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+
+    // Set the canvas to fullscreen
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resizeCanvas(); // Call this function to set initial size
+    window.addEventListener('resize', resizeCanvas);
+
+    // Define emojis for sprites
+    const playerEmoji = '🦘';
+    const rockEmoji = '🔩';
+    const platformEmoji = '🟦🟦🟦';
+    const cloudEmoji = '☁️';
+    const emojiSize = 32;
+
+    let player = {
+        x: canvas.width / 2,
+        y: canvas.height - 150, // Start the player a bit above the bottom of the canvas
+        size: 70,
+        dy: 0,
+        dx: 0,
+        jumping: true // Start the game with the player in a jumping state
+    };
+    let baseGravity = 0.005; // Decreased base gravity for a lighter effect
+let gravity = baseGravity;
+const maxGravity = 0.2; // Decreased max gravity for less pull at the top
+const jumpStrength = 5;
+let platforms = [];
+let rocks = [];
+let platformCount = Math.floor(canvas.height / 100);
+let score = 0;
+let touchX;
+
+let animationFrameId;
+let rockCount = 2;
+    const playerSpeed = 2; 
+
+const cloudPatternSize = 100;
+const cloudPattern = document.createElement('canvas');
+cloudPattern.width = cloudPatternSize;
+cloudPattern.height = cloudPatternSize;
+const cloudPatternCtx = cloudPattern.getContext('2d');
+cloudPatternCtx.fillStyle = '#f0f0f0'; // Match the body background color
+cloudPatternCtx.fillRect(0, 0, cloudPattern.width, cloudPattern.height);
+cloudPatternCtx.font = '48px serif';
+cloudPatternCtx.fillText(cloudEmoji, 0, 48);
+const pattern = ctx.createPattern(cloudPattern, 'repeat');
+
+// Function to draw emojis
+function drawEmoji(emoji, x, y, size) {
+    ctx.font = `${size}px serif`;
+    ctx.fillText(emoji, x, y);
+}
+
+// Include the logic for rocks falling
+function createRocks() {
+    // Create a new rock if there are less than 7 rocks
+    if (rocks.length < rockCount) {
+        rocks.push({
+            x: Math.random() * canvas.width,
+            y: -20, // Start above the canvas
+            width: 30,
+            height: 20,
+            dy: 1 + Math.random() * 3 // Falling speed
+        });
+    }
+}
+
+
+const MAX_CLOUDS_HORIZONTAL = 6;
+const MAX_CLOUDS_VERTICAL = 9;
+const CLOUD_SPACING = 100;
+
+let clouds = [];
+
+function initializeClouds() {
+    for (let y = 0; y < MAX_CLOUDS_VERTICAL; y++) {
+        for (let x = 0; x < MAX_CLOUDS_HORIZONTAL; x++) {
+            let cloud = {
+                x: x * CLOUD_SPACING,
+                y: y * CLOUD_SPACING
+            };
+            clouds.push(cloud);
+        }
+    }
+}
+
+function updateScoreDisplay() {
+        scoreDisplay.textContent = 'Score: ' + score;
+    }
+
+function updateClouds() {
+        for (let cloud of clouds) {
+            cloud.y += player.dy * 0.8;
+        }
+
+        clouds = clouds.filter(cloud => cloud.y < canvas.height); // Updated to use canvas.height
+
+
+    while (clouds.length < MAX_CLOUDS_HORIZONTAL * MAX_CLOUDS_VERTICAL) {
+        let xPositions = clouds.map(cloud => cloud.x);
+        let missingXPositions = [];
+
+        for (let x = 0; x < MAX_CLOUDS_HORIZONTAL; x++) {
+            if (!xPositions.includes(x * CLOUD_SPACING)) {
+                missingXPositions.push(x * CLOUD_SPACING);
+            }
+        }
+
+        if (missingXPositions.length > 0) {
+            let newCloudX = missingXPositions[Math.floor(Math.random() * missingXPositions.length)];
+            clouds.push({ x: newCloudX, y: -CLOUD_SPACING });
+        }
+    }
+}
+
+
+function drawCloudPattern(x, y) {
+    // This function will draw the repeating cloud pattern at the given x and y position
+    ctx.fillStyle = pattern;
+    ctx.fillRect(x, y, cloudPatternSize, cloudPatternSize);
+}
+
+function drawClouds() {
+    for (let cloud of clouds) {
+        drawCloudPattern(cloud.x, cloud.y);
+    }
+}
+
+initializeClouds();
+
+function drawRocks() {
+    rocks.forEach(function(rock, index) {
+        rock.y += rock.dy;
+        drawEmoji(rockEmoji, rock.x, rock.y, emojiSize);
+        // Remove rock if it goes off the screen
+        if (rock.y > canvas.height) {
+            rocks.splice(index, 1);
+        }
+    });
+
+    // If there are less than 7 rocks, create a new one
+    if (rocks.length < rockCount) {
+        rockCount = Math.floor(score / 100) + 2; // Increase rock count every 10 points
+        createRocks();
+    }
+}
+
+
+function createPlatforms() {
+    platforms = []; // Clear existing platforms
+    let verticalSpacing = canvas.height / platformCount; // Equal spacing for each platform
+
+    // Assume the player can jump a horizontal distance equal to maxJumpDistance
+    let maxJumpDistance = jumpStrength * 2; // This is an example, adjust based on your game's mechanics
+
+    for (let i = 0; i < platformCount; i++) {
+        // Random horizontal position, ensuring it's reachable based on the player's jump distance
+        let minX = (i === 0) ? player.x : platforms[i - 1].x - maxJumpDistance + player.size;
+        let maxX = (i === 0) ? player.x : platforms[i - 1].x + maxJumpDistance - player.size;
+
+        // Clamp values to canvas boundaries
+        minX = Math.max(minX, 0);
+        maxX = Math.min(maxX, canvas.width - emojiSize);
+
+        let platform = {
+            x: Math.random() * (maxX - minX) + minX, // Random horizontal position within jump range
+            y: canvas.height - (i * verticalSpacing), // Evenly spaced vertical position
+            width: 100, // Width of the platform
+            height: 20 // Height of the platform
+        };
+        platforms.push(platform);
+    }
+}
+
+
+
+function drawPlatforms() {
+    platforms.forEach(function(platform) {
+        drawEmoji(platformEmoji, platform.x, platform.y, emojiSize);
+    });
+}
+
+function update() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+// Draw clouds, platforms, and player
+drawClouds();
+drawPlatforms();
+// Draw rocks - they are not affected by player's movement or platforms shifting
+drawRocks();
+drawEmoji(playerEmoji, player.x, player.y, player.size);
+
+// Update gravity based on the player's height
+gravity = 0.005 + (1 - 0.005) * ((canvas.height - player.y) / canvas.height);
+
+// Update the player's position
+player.dy += gravity;
+player.y += player.dy;
+
+// If the player is moving up, move the platforms down
+if (player.dy < 0) {
+    platforms.forEach(platform => {
+        platform.y -= player.dy;
+    });
+}
+
+    // Prevent the player from reaching the top of the screen
+    let topThreshold = canvas.height * 0.1; // Player can't go above 10% of the screen height
+    if (player.y < topThreshold) {
+        player.y = topThreshold;
+        player.dy = 0;
+    }
+    // Automatic Jumping Logic
+    if (player.y > canvas.height - player.size && !player.jumping) {
+        player.dy = -jumpStrength;
+        player.jumping = true;
+    }
+
+    // Touch controls for lateral movement
+    if (touchX != null) {
+        if (touchX < player.x) {
+            player.dx = -playerSpeed;
+        } else {
+            player.dx = playerSpeed;
+        }
+        player.x += player.dx;
+    }
+
+    // Collision detection with the canvas edges
+    if (player.x < 0) {
+        player.x = canvas.width;
+    } else if (player.x > canvas.width) {
+        player.x = 0;
+    }
+
+    // Collision detection with platforms
+    platforms.forEach(function(platform, index) {
+        if (
+            player.y + player.size > platform.y &&
+            player.y < platform.y + platform.height &&
+            player.x + player.size > platform.x &&
+            player.x < platform.x + platform.width
+        ) {
+            // Adjust the condition to check if the player's bottom is above the platform top
+            if (player.dy > 0) {
+                score++;
+                updateScoreDisplay();
+                player.dy = -jumpStrength;
+                player.jumping = true;
+            }
+        }
+
+        // Remove platforms that have moved off the screen and add a new one at the top
+        if (platform.y > canvas.height) {
+            platforms.splice(index, 1);
+            addNewPlatformAtTop();
+        }
+    });
+
+    rocks.forEach(function(rock, index) {
+        if (
+            player.x < rock.x + rock.width &&
+            player.x + player.size > rock.x &&
+            player.y < rock.y + rock.height &&
+            player.y + player.size > rock.y
+        ) {
+            gameOver(); // Game over if the player hits a rock
+        }
+
+        // Rocks fall independently, so no need to adjust their position based on player or platforms
+    });
+    // Check for game over condition if the player falls off the bottom
+    if (player.y - player.size > canvas.height) {
+        gameOver();
+    }
+
+    animationFrameId = requestAnimationFrame(update);
+}
+
+function addNewPlatformAtTop() {
+    // Calculate the x position for the new platform
+    let newPlatformX = Math.random() * (canvas.width - emojiSize);
+    let newPlatform = {
+        x: newPlatformX,
+        y: -emojiSize, // Position it just above the screen
+        width: 100, // Width of the platform
+        height: 20 // Height of the platform
+    };
+    platforms.push(newPlatform);
+}
+
+function gameOver() {
+        cancelAnimationFrame(animationFrameId);
+        gameOverScreen.style.display = 'flex'; // Changed to flex to center the content
+    }
+
+    playButton.addEventListener('click', function() {
+        gameOverScreen.style.display = 'none';
+        score = 0;
+        player.x = canvas.width / 2;
+        player.y = canvas.height - 150; // Reset player's y position above the bottom
+        player.dy = 0;
+        player.jumping = true; // Start the game with the player in a jumping state
+        updateScoreDisplay();
+        createPlatforms(); // Recreate platforms when the game restarts
+        update();
+    });
+
+    canvas.addEventListener('touchstart', function(e) {
+        touchX = e.touches[0].clientX;
+    });
+
+    canvas.addEventListener('touchmove', function(e) {
+        touchX = e.touches[0].clientX;
+        e.preventDefault(); // Prevent scrolling when touching the canvas
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', function() {
+        touchX = null;
+    });
+
+    window.addEventListener('resize', function() {
+        resizeCanvas();
+        // Consider redrawing or resetting game state here if necessary
+    });
+    
+
+    createPlatforms(); // Create platforms when the game starts
+    update();
+
+    </script>
+</body>
+</html>
